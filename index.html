@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#16171a">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="개인 창작자를 위한 오프라인 아이디어 보관소. 기록은 이 기기 안에만 저장됩니다.">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="소재창고">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="referrer" content="no-referrer">
+<title>소재창고</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<noscript><p style="padding:20px">소재창고는 JavaScript가 필요합니다. 브라우저에서 JavaScript를 켜 주세요.</p></noscript>
+<div id="app">
+  <aside id="sidebar" aria-label="주 메뉴">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">소</div>
+      <div><div class="brand-name">소재창고</div><div class="brand-sub">개인 창작 데이터베이스</div></div>
+    </div>
+    <button class="btn primary btn-new" id="new-btn" title="새 기록 작성">＋ 새 기록 작성</button>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-extra" id="side-extra"></div>
+    <div class="side-foot" id="side-foot"></div>
+  </aside>
+  <div id="overlay"></div>
+  <div id="main">
+    <header id="topbar">
+      <button class="btn ghost icon" id="menu-btn" title="메뉴 열기" aria-label="메뉴 열기"></button>
+      <div class="m-title" id="m-title" aria-hidden="true">소재창고</div>
+      <div class="search" id="search-wrap">
+        <input id="search" type="search" placeholder="전체 검색 — 제목, 본문, 상세 항목, 장르, 태그" aria-label="전체 검색" autocomplete="off" enterkeyhint="search">
+        <button class="clear" id="search-clear" title="검색어 지우기" aria-label="검색어 지우기"></button>
+      </div>
+      <div class="top-actions">
+        <span class="net-badge" id="net-badge" hidden title="인터넷 연결 없음 — 기록은 이 기기에 계속 저장됩니다">오프라인</span>
+        <div class="save-ind" id="save-ind" role="status" aria-live="polite"><span class="dot"></span><span class="txt">불러오는 중…</span></div>
+        <button class="btn icon m-only" id="search-toggle" title="검색" aria-label="검색 열기"></button>
+        <button class="btn" id="quick-btn" title="빠른 메모 작성 (어느 화면에서든)"><span class="ic-slot"></span><span class="btn-label">빠른 메모</span></button>
+        <button class="btn" id="random-btn" title="아이디어 파편·정식 소재 중 하나를 무작위로 엽니다"><span class="ic-slot"></span><span class="btn-label">랜덤 소재</span></button>
+      </div>
+    </header>
+    <div id="banners"></div>
+    <main id="content" tabindex="-1"><p class="hint">불러오는 중…</p></main>
+  </div>
+  <nav id="bottom-nav" aria-label="하단 메뉴"></nav>
+</div>
+<div id="toasts" aria-live="polite"></div>
+<input type="file" id="import-file" accept=".json,application/json" hidden>
+<script src="js/app.js"></script>
+</body>
+</html>

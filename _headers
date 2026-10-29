@@ -1,0 +1,14 @@
+# Cloudflare Pages / Netlify용 헤더 설정 (다른 호스팅에서는 무시되며 동작에 영향 없음)
+# 서비스 워커와 HTML은 항상 최신 여부를 확인하도록 해 업데이트가 빨리 감지되게 한다.
+/sw.js
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Content-Type: application/manifest+json
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
