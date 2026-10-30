@@ -7,7 +7,7 @@
  * 배포 규칙: 앱 파일을 하나라도 바꿔 배포할 때는 아래 CACHE_VERSION을 반드시 올린다.
  *           그래야 사용자 기기에서 새 버전이 감지되고 ‘업데이트’ 안내가 나타난다.
  */
-const CACHE_VERSION = 'v1.1.0';
+const CACHE_VERSION = 'v1.1.1';
 const CACHE_PREFIX = 'creative-warehouse-app-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 

@@ -8,7 +8,7 @@
 // v1.0과 v1.1이 서로의 백업을 그대로 읽을 수 있다. 구조가 호환되지 않게 바뀔 때만 올린다.
 const SCHEMA_VERSION = 1;
 const APP_ID = 'creative-warehouse';
-const APP_VERSION = '1.1';
+const APP_VERSION = '1.1.1';
 const DB_NAME = 'creative_warehouse';
 const LS_KEY = 'creative_warehouse_v1';
 const BC_NAME = 'creative_warehouse_tabs';
@@ -1073,6 +1073,13 @@ function renderBanners() {
     wrap.appendChild(h('div', { class: 'banner ' + n.kind }, h('div', { class: 'grow' }, n.text),
       btn('닫기', { cls: 'sm ghost', onClick: () => { storageNotes.splice(i, 1); renderBanners(); } })));
   });
+  if (BROWSER.inApp && !inAppBannerDismissed && !isStandalone()) {
+    wrap.appendChild(h('div', { class: 'banner warn' },
+      h('div', { class: 'grow' }, h('b', null, `${BROWSER.inApp} 안에서 열려 있습니다. `),
+        '이 화면에서는 앱 설치가 안 되고 백업 파일 저장이 막힐 수 있습니다. 또 여기서 쓴 기록은 Chrome과 따로 저장됩니다. Chrome에서 열어 사용하는 것을 권장합니다.'),
+      openInRealBrowserButtons(),
+      btn('닫기', { cls: 'sm ghost', onClick: () => { inAppBannerDismissed = true; renderBanners(); } })));
+  }
   if (tabs.others.size && !tabBannerDismissed && !staleTab) {
     wrap.appendChild(h('div', { class: 'banner warn' },
       h('div', { class: 'grow' }, h('b', null, '다른 탭에서도 열려 있습니다. '), '저장한 내용은 탭 사이에 자동으로 반영됩니다. 같은 기록을 두 곳에서 동시에 고치면 나중에 저장한 쪽이 ‘충돌 사본’으로 따로 저장됩니다.'),
@@ -1853,6 +1860,27 @@ async function exportBackup(opts = {}) {
     const d = new Date();
     const name = `${opts.prefix || '소재창고_백업'}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.json`;
     const text = JSON.stringify(data, null, 2);
+    // 앱 안의 브라우저는 파일 다운로드를 조용히 무시하는 경우가 많다 → 저장 대신 다른 방법을 먼저 안내
+    if (BROWSER.inApp && !opts.share && !opts.silent && !opts.forceDownload) {
+      openModal({
+        title: '백업 파일 저장',
+        content: h('div', null,
+          h('p', null, `${BROWSER.inApp} 안의 브라우저에서는 파일 저장이 동작하지 않을 수 있습니다. 가장 확실한 방법은 Chrome에서 열어 내보내는 것입니다.`),
+          h('div', { class: 'btn-row' }, openInRealBrowserButtons()),
+          h('p', { class: 'hint', style: { marginTop: '10px' } }, '‘백업 내용 복사’는 백업 전체를 글자로 복사합니다. 메모장 등에 붙여 넣어 보관했다가, 설정의 ‘붙여 넣어 불러오기’로 되살릴 수 있습니다.')),
+        actions: [
+          { label: '그래도 파일 저장 시도', onClick: m => { m.close(); exportBackup(Object.assign({}, opts, { forceDownload: true })); } },
+          { label: '백업 내용 복사', cls: 'primary', onClick: async m => {
+            if (await copyText(text)) {
+              meta.lastBackupAt = data.exportedAt; await saveMeta();
+              m.close(); toast(`백업 내용(${data.records.length}개 기록)을 복사했습니다. 메모장 등에 붙여 넣어 보관하세요.`, { kind: 'ok', duration: 6000 });
+              if (ui.view === 'settings' || ui.view === 'dashboard') refresh();
+            } else toast('복사하지 못했습니다. Chrome에서 열어 내보내 주세요.', { kind: 'error' });
+          } },
+        ],
+      });
+      return false;
+    }
     if (opts.share) {
       const file = new File([text], name, { type: 'application/json' });
       try {
@@ -1934,6 +1962,23 @@ function openImportPicker() {
   else inp.setAttribute('accept', '.json,application/json');
   inp.click();
 }
+function openPasteImport() {
+  const ta = h('textarea', { class: 'field', rows: 8, placeholder: '‘백업 내용 복사’로 복사해 둔 글자 전체를 여기에 붙여 넣으세요. ({ 로 시작합니다)', 'aria-label': '백업 내용 붙여넣기', spellcheck: 'false', autocapitalize: 'off', style: { fontFamily: 'ui-monospace,Consolas,monospace', fontSize: '13px' } });
+  openModal({
+    title: '붙여 넣어 불러오기',
+    content: h('div', null, h('p', { class: 'hint' }, '불러오기 전에 기록 개수를 먼저 보여 드리며, 확인하기 전에는 아무것도 바뀌지 않습니다.'), ta),
+    actions: [
+      { label: '취소', cls: 'ghost', onClick: m => m.close() },
+      { label: '다음', cls: 'primary', onClick: m => {
+        if (!ta.value.trim()) { toast('붙여 넣은 내용이 없습니다.', { kind: 'warn' }); return; }
+        const v = validateBackup(ta.value.trim());
+        if (v.error) { toast(v.error + ' 기존 기록은 바뀌지 않았습니다.', { kind: 'error', duration: 7000 }); return; }
+        m.close();
+        openImportPreview('붙여 넣은 백업 내용', v);
+      } },
+    ],
+  });
+}
 function handleImportFile(file) {
   if (!file) return;
   if (file.size > 100 * 1024 * 1024) { toast('파일이 너무 큽니다 (100MB 초과).', { kind: 'error' }); return; }
@@ -1965,7 +2010,8 @@ function openImportPreview(fileName, v) {
     h('b', null, '주의: 현재 기록 ' + curCount + '개가 모두 지워지고 백업 파일의 내용으로 바뀝니다.'),
     h('p', { style: { margin: '6px 0' } }, '계속하려면 아래 칸에 ‘전체 교체’라고 입력하세요.'),
     confirmIn,
-    h('label', { class: 'check', style: { marginTop: '8px' } }, safetyCb, '교체 직전에 현재 데이터를 안전 백업 파일로 먼저 내려받기 (권장)'));
+    h('label', { class: 'check', style: { marginTop: '8px' } }, safetyCb, '교체 직전에 현재 데이터를 안전 백업 파일로 먼저 내려받기 (권장)'),
+    BROWSER.inApp ? h('p', { style: { margin: '6px 0 0' } }, `${BROWSER.inApp} 안의 브라우저에서는 안전 백업 파일이 실제로 저장되지 않을 수 있습니다. 전체 교체는 Chrome에서 진행하세요.`) : null);
   const radio = (val, title, desc) => {
     const inp = h('input', { type: 'radio', name: 'imode', value: val, checked: val === mode });
     inp.addEventListener('change', () => { mode = val; replaceBox.hidden = mode !== 'replace'; updateBtn(); });
@@ -2087,7 +2133,8 @@ function renderSettings(c) {
     h('div', { class: 'btn-row' },
       btn('JSON으로 내보내기', { cls: 'primary', icon: 'download', onClick: () => exportBackup() }),
       canShareFiles() ? btn('공유로 내보내기', { icon: 'share', title: '드라이브·메신저 등 다른 앱으로 백업 파일 보내기', onClick: () => exportBackup({ share: true }) }) : null,
-      btn('JSON 파일 불러오기', { icon: 'upload', onClick: openImportPicker })),
+      btn('JSON 파일 불러오기', { icon: 'upload', onClick: openImportPicker }),
+      btn('붙여 넣어 불러오기', { cls: 'ghost', title: '복사해 둔 백업 내용(글자)을 붙여 넣어 불러오기', onClick: openPasteImport })),
     h('p', { class: 'hint', style: { marginTop: '8px' } }, '휴대폰에서는 내보낸 파일이 ‘다운로드’ 폴더에 저장됩니다. ‘공유로 내보내기’는 사용자가 고른 앱(예: 드라이브)으로만 파일을 보내며, 소재창고가 자동으로 어디에 올리지는 않습니다.'),
     h('h3', null, 'ID 충돌 처리 방식 (병합 시)'),
     h('div', { class: 'note-box' }, h('ul', { style: { margin: 0 } },
@@ -2163,13 +2210,7 @@ function renderSettings(c) {
       installPrompt ? btn('홈 화면에 설치', { cls: 'primary', icon: 'phone', onClick: promptInstall }) : null,
       swState.reg ? btn('업데이트 확인', { icon: 'refresh', onClick: checkForUpdate }) : null,
       updateReady ? btn('새 버전으로 업데이트', { cls: 'primary', onClick: applyUpdate }) : null),
-    !standalone && !installPrompt ? h('div', { class: 'note-box' },
-      h('b', null, '홈 화면에 추가하는 방법'),
-      h('ul', null,
-        h('li', null, 'Android Chrome: 오른쪽 위 ⋮ 메뉴 → ‘홈 화면에 추가’ 또는 ‘앱 설치’'),
-        h('li', null, '삼성 인터넷: 아래 메뉴 ≡ → ‘현재 페이지 추가’ → ‘홈 화면’'),
-        h('li', null, 'iPhone Safari: 공유 버튼 → ‘홈 화면에 추가’'),
-        h('li', null, 'PC Chrome·Edge: 주소창 오른쪽의 설치 아이콘'))) : null,
+    !standalone ? h('div', { style: { marginTop: '10px' } }, h('b', { style: { fontSize: '14px' } }, '홈 화면에 추가하는 방법'), h('div', { style: { marginTop: '6px' } }, installGuideContent())) : null,
     h('p', { class: 'hint', style: { marginTop: '8px' } }, '오프라인 기능은 앱 화면 파일만 기기에 보관하는 것이며, 기록은 아래 저장소(IndexedDB)에 따로 저장됩니다. 앱을 업데이트해도 기록은 지워지지 않습니다. 단, 앱을 삭제하거나 브라우저의 사이트 데이터를 지우면 기록도 함께 지워질 수 있습니다.')));
 
   // 화면
@@ -2297,10 +2338,78 @@ function buildSideExtra() {
     h('div', { class: 'nav-sep' }),
     (() => { const b = h('button', { type: 'button', class: 'nav-item', title: '랜덤 소재 열기' }, icon('shuffle'), h('span', null, '랜덤 소재')); b.addEventListener('click', () => { closeDrawer(); openRandom(); }); return b; })(),
     (() => { const b = h('button', { type: 'button', class: 'nav-item', title: '빠른 메모 작성' }, icon('pen'), h('span', null, '빠른 메모')); b.addEventListener('click', () => { closeDrawer(); openQuickMemo(); }); return b; })(),
-    installPrompt ? (() => { const b = h('button', { type: 'button', class: 'nav-item', title: '홈 화면에 앱으로 설치' }, icon('phone'), h('span', null, '앱으로 설치')); b.addEventListener('click', () => { closeDrawer(); promptInstall(); }); return b; })() : null]);
+    // 설치되지 않았으면 항상 표시: 브라우저가 설치를 허용하면 바로 설치, 아니면 방법 안내
+    !isStandalone() ? (() => {
+      const label = installPrompt ? '앱으로 설치' : '앱 설치 방법';
+      const b = h('button', { type: 'button', class: 'nav-item', title: label }, icon('phone'), h('span', null, label));
+      b.addEventListener('click', () => { closeDrawer(); if (installPrompt) promptInstall(); else openInstallGuide(); });
+      return b;
+    })() : null]);
 }
 function isStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+// 어떤 브라우저에서 열렸는지 — 앱 안의 브라우저(구글 앱, 카카오톡 등)는 설치와 파일 저장이 막혀 있다
+const BROWSER = (() => {
+  const ua = navigator.userAgent || '';
+  const IN_APP = [[/GSA\//, '구글 앱'], [/KAKAOTALK/i, '카카오톡'], [/NAVER\(inapp/i, '네이버 앱'], [/DaumApps/i, '다음 앱'],
+    [/Instagram/i, '인스타그램'], [/FBAN|FBAV|FB_IAB/i, '페이스북'], [/\bLine\//i, '라인'], [/BAND\//i, '밴드'], [/Twitter/i, 'X(트위터)']];
+  let inApp = null;
+  for (const [re, name] of IN_APP) if (re.test(ua)) { inApp = name; break; }
+  const android = /Android/i.test(ua);
+  if (!inApp && android && /; wv\)/.test(ua)) inApp = '앱 내부 브라우저';
+  const ios = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const samsung = /SamsungBrowser/i.test(ua);
+  const chrome = /Chrome\/|CriOS/.test(ua) && !samsung && !/EdgA?\/|OPR\/|Whale\//.test(ua) && !inApp;
+  return { inApp, android, ios, samsung, chrome, mobile: android || ios };
+})();
+let inAppBannerDismissed = false;
+function chromeIntentUrl() {
+  // 앱 화면 주소(#/…)를 붙이면 Android의 intent 주소 해석이 깨질 수 있어 시작 페이지만 연다
+  const u = new URL(location.href);
+  const base = u.origin + u.pathname;
+  return `intent://${u.host}${u.pathname}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(base)};end`;
+}
+async function copyAddress() {
+  const url = location.href.split('#')[0];
+  if (await copyText(url)) toast('주소를 복사했습니다. Chrome(또는 삼성 인터넷) 주소창에 붙여 넣어 여세요.', { kind: 'ok', duration: 6000 });
+  else openModal({ title: '주소 복사', content: h('div', null, h('p', null, '아래 주소를 길게 눌러 복사하세요.'), h('pre', { class: 'preview' }, url)), actions: [{ label: '닫기', cls: 'primary', onClick: m => m.close() }] });
+}
+function openInRealBrowserButtons() {
+  return [
+    BROWSER.android ? btn('Chrome에서 열기', { cls: 'primary', icon: 'phone', onClick: () => { location.href = chromeIntentUrl(); } }) : null,
+    btn('주소 복사', { icon: 'copy', onClick: copyAddress }),
+  ];
+}
+function installGuideContent() {
+  if (isStandalone()) return h('p', null, '지금 설치된 앱으로 실행 중입니다. 따로 설치할 필요가 없습니다.');
+  if (BROWSER.inApp) {
+    return h('div', null,
+      h('div', { class: 'note-box warn' }, h('b', null, `지금은 ${BROWSER.inApp} 안의 브라우저로 열려 있습니다. `),
+        '이런 화면에서는 ‘앱 설치’ 메뉴가 나타나지 않고, 백업 파일 저장도 막힐 수 있습니다. Chrome이나 삼성 인터넷 같은 일반 브라우저에서 열어 주세요.'),
+      h('div', { class: 'btn-row' }, openInRealBrowserButtons()),
+      h('p', { class: 'hint', style: { marginTop: '8px' } }, BROWSER.ios ? '아이폰은 Safari에서 열어야 홈 화면에 추가할 수 있습니다. 화면의 공유·메뉴 버튼에서 ‘Safari로 열기’를 찾거나 주소를 복사해 Safari에 붙여 넣으세요.'
+        : '‘Chrome에서 열기’가 동작하지 않으면 주소를 복사해 Chrome 주소창에 붙여 넣으세요.'));
+  }
+  const steps = [];
+  if (BROWSER.android && BROWSER.samsung) steps.push('삼성 인터넷: 아래쪽 ≡ 메뉴 → ‘현재 페이지 추가’ → ‘홈 화면’ (주소창 오른쪽에 설치 아이콘이 보이면 그것을 눌러도 됩니다)');
+  else if (BROWSER.android) steps.push('Chrome: 오른쪽 위 ⋮ 메뉴 → ‘앱 설치’ 또는 ‘홈 화면에 추가’');
+  else if (BROWSER.ios) steps.push('Safari: 아래쪽 공유 버튼 → ‘홈 화면에 추가’ (다른 브라우저에서는 추가할 수 없을 수 있습니다)');
+  else steps.push('PC Chrome·Edge: 주소창 오른쪽의 설치 아이콘(모니터에 화살표 모양) 또는 메뉴 → ‘앱 설치’');
+  return h('div', null,
+    h('ul', { style: { margin: '0 0 8px', paddingLeft: '18px' } }, steps.map(s => h('li', null, s))),
+    h('div', { class: 'note-box' },
+      h('b', null, '메뉴에 ‘앱 설치’가 보이지 않나요?'),
+      h('ul', null,
+        h('li', null, '이미 설치했다면 브라우저는 ‘앱 설치’ 대신 ‘앱 열기’를 보여 줍니다. 홈 화면이나 앱 서랍에서 ‘소재창고’ 아이콘을 찾아보세요.'),
+        h('li', null, '구글 앱, 카카오톡 등에서 링크를 누르면 그 앱 안의 브라우저로 열려 설치가 안 됩니다. Chrome에서 주소를 직접 여세요.'),
+        h('li', null, '처음 접속한 직후에는 설치 메뉴가 늦게 나타날 수 있습니다. 잠시 둘러본 뒤 다시 메뉴를 열어 보세요.'))));
+}
+function openInstallGuide() {
+  openModal({ title: installPrompt ? '앱으로 설치' : '앱 설치 방법', content: h('div', null,
+      installPrompt ? h('div', { class: 'btn-row', style: { marginBottom: '10px' } }, btn('지금 설치', { cls: 'primary', icon: 'phone', onClick: () => { modalStack.length && modalStack[modalStack.length - 1].close(); promptInstall(); } })) : null,
+      installGuideContent()),
+    actions: [{ label: '닫기', cls: 'ghost', onClick: m => m.close() }] });
 }
 function setupPwa() {
   window.addEventListener('beforeinstallprompt', e => {
